@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Park20 — 后端模块测试台</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --card: #21263a;
+    --border: #2e3448;
+    --accent: #4ade80;
+    --accent2: #60a5fa;
+    --accent3: #f59e0b;
+    --accent4: #a78bfa;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --danger: #f87171;
+    --radius: 14px;
+    --shadow: 0 4px 24px rgba(0,0,0,0.4);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'SF Pro Display',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; min-height: 100vh; }
+
+  header { background: linear-gradient(135deg,#0f1117 0%,#162032 100%); border-bottom: 1px solid var(--border); padding: 24px 40px; display: flex; align-items: center; gap: 16px; }
+  header .logo { width: 44px; height: 44px; background: linear-gradient(135deg,#4ade80,#22c55e); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+  header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
+  header p  { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(480px, 1fr)); gap: 24px; padding: 32px 40px; max-width: 1400px; margin: 0 auto; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+  .card-header { padding: 18px 22px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; }
+  .badge { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px; letter-spacing: 0.5px; }
+  .badge-green  { background: rgba(74,222,128,.15); color: var(--accent); }
+  .badge-blue   { background: rgba(96,165,250,.15); color: var(--accent2); }
+  .badge-amber  { background: rgba(245,158,11,.15);  color: var(--accent3); }
+  .badge-purple { background: rgba(167,139,250,.15); color: var(--accent4); }
+  .card-header h2 { font-size: 15px; font-weight: 600; flex: 1; }
+  .card-header span.desc { font-size: 12px; color: var(--muted); }
+
+  .card-body { padding: 20px 22px; }
+
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 500; letter-spacing: 0.3px; text-transform: uppercase; }
+
+  .drop-zone { border: 2px dashed var(--border); border-radius: 10px; padding: 28px 16px; text-align: center; cursor: pointer; transition: all .2s; background: rgba(255,255,255,0.02); }
+  .drop-zone:hover, .drop-zone.over { border-color: var(--accent); background: rgba(74,222,128,.06); }
+  .drop-zone .icon { font-size: 28px; margin-bottom: 8px; }
+  .drop-zone p { font-size: 13px; color: var(--muted); }
+  .drop-zone p strong { color: var(--text); }
+  .drop-zone input[type=file] { display: none; }
+  .preview-img { max-width: 100%; max-height: 200px; border-radius: 8px; margin-top: 12px; object-fit: cover; display: none; }
+  .preview-audio { width: 100%; margin-top: 10px; display: none; }
+
+  textarea { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; color: var(--text); font-size: 12px; font-family: 'SF Mono',Monaco,'Cascadia Code',monospace; resize: vertical; min-height: 160px; line-height: 1.6; outline: none; transition: border-color .2s; }
+  textarea:focus { border-color: var(--accent2); }
+
+  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 20px; border-radius: 9px; border: none; cursor: pointer; font-size: 14px; font-weight: 600; transition: all .15s; }
+  .btn-primary { background: linear-gradient(135deg,#4ade80,#22c55e); color: #0f1117; }
+  .btn-primary:hover { opacity: .9; transform: translateY(-1px); }
+  .btn-blue   { background: linear-gradient(135deg,#60a5fa,#3b82f6); color: #fff; }
+  .btn-amber  { background: linear-gradient(135deg,#fbbf24,#f59e0b); color: #0f1117; }
+  .btn-purple { background: linear-gradient(135deg,#a78bfa,#8b5cf6); color: #fff; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+  .btn-row { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; align-items: center; }
+
+  .result-box { margin-top: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .result-header { padding: 8px 14px; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; color: var(--muted); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  .result-body { padding: 14px; font-size: 12px; font-family: 'SF Mono',Monaco,'Cascadia Code',monospace; color: #a8d4ff; max-height: 320px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+  .result-body.empty { color: var(--muted); font-style: italic; font-family: inherit; }
+
+  .metric-row { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+  .metric { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; flex: 1; min-width: 100px; }
+  .metric .val { font-size: 22px; font-weight: 700; }
+  .metric .lbl { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .metric.green .val  { color: var(--accent); }
+  .metric.blue  .val  { color: var(--accent2); }
+  .metric.amber .val  { color: var(--accent3); }
+  .metric.purple .val { color: var(--accent4); }
+
+  .tag { display: inline-block; font-size: 11px; padding: 3px 8px; border-radius: 5px; margin: 2px; background: rgba(255,255,255,.07); }
+  .spinner { display: none; width: 18px; height: 18px; border: 2px solid rgba(255,255,255,.2); border-top-color: currentColor; border-radius: 50%; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading .spinner { display: inline-block; }
+  .loading .btn-text { display: none; }
+
+  .section-note { font-size: 12px; color: var(--muted); background: rgba(255,255,255,.04); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; line-height: 1.6; }
+  .section-note code { background: rgba(255,255,255,.08); padding: 1px 5px; border-radius: 4px; font-family: monospace; }
+
+  .gps-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
+  .gps-table th { background: rgba(255,255,255,.06); padding: 6px 10px; text-align: left; color: var(--muted); font-weight: 600; }
+  .gps-table td { padding: 5px 10px; border-top: 1px solid rgba(255,255,255,.05); }
+  .gps-table tr:hover td { background: rgba(255,255,255,.03); }
+
+  .sound-bar-wrap { margin-top: 14px; }
+  .sound-bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 7px; }
+  .sound-bar-row .lbl { width: 50px; font-size: 12px; color: var(--muted); text-align: right; }
+  .sound-bar-bg  { flex: 1; height: 8px; background: rgba(255,255,255,.07); border-radius: 4px; overflow: hidden; }
+  .sound-bar-fill { height: 100%; border-radius: 4px; transition: width .6s ease; }
+  .sound-bar-row .pct { width: 40px; font-size: 12px; color: var(--text); text-align: right; }
+
+  footer { text-align: center; padding: 32px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); margin-top: 16px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🌿</div>
+  <div>
+    <h1>Park20 — 后端功能测试台</h1>
+    <p>FR-1.1 绿视率 &nbsp;·&nbsp; FR-1.2 场景识别 &nbsp;·&nbsp; FR-1.3 声景分析 &nbsp;·&nbsp; FR-1.4 GPS轨迹</p>
+  </div>
+</header>
+
+<div class="grid">
+
+  <!-- ── FR-1.1 绿视率 ─────────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-header">
+      <span class="badge badge-green">FR-1.1</span>
+      <h2>绿视率计算（绿色植被像素占比）</h2>
+    </div>
+    <div class="card-body">
+      <div class="section-note">
+        前端上传：<code>multipart/form-data</code>，字段名 <code>image</code>（JPEG/PNG/WEBP）<br>
+        iOS端由 Vision Framework + Metal 本地完成；此处为服务端等效实现。
+      </div>
+      <div class="field">
+        <label>上传照片</label>
+        <div class="drop-zone" id="dz-gvr" onclick="document.getElementById('inp-gvr').click()">
+          <div class="icon">📷</div>
+          <p><strong>点击选择</strong>或拖放图片至此</p>
+          <p>支持 JPG / PNG / WEBP</p>
+          <input type="file" id="inp-gvr" accept="image/*">
+          <img id="prev-gvr" class="preview-img" alt="">
+        </div>
+      </div>
+      <div class="metric-row" id="metrics-gvr" style="display:none">
+        <div class="metric green"><div class="val" id="m-gvr">—</div><div class="lbl">绿视率 (%)</div></div>
+        <div class="metric blue"><div class="val" id="m-gpx">—</div><div class="lbl">绿色像素</div></div>
+        <div class="metric amber"><div class="val" id="m-gtime">—</div><div class="lbl">耗时 (s)</div></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="btn-gvr" onclick="runGVR()">
+          <span class="spinner"></span><span class="btn-text">▶ 开始计算</span>
+        </button>
+      </div>
+      <div class="result-box">
+        <div class="result-header"><span>JSON 响应</span><span id="status-gvr">—</span></div>
+        <div class="result-body empty" id="out-gvr">等待上传图片…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── FR-1.2 场景识别 ──────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-header">
+      <span class="badge badge-blue">FR-1.2</span>
+      <h2>场景识别（CoreML 分类）</h2>
+    </div>
+    <div class="card-body">
+      <div class="section-note">
+        前端上传：<code>multipart/form-data</code>，字段名 <code>image</code>（同FR-1.1）<br>
+        返回置信度最高的场景标签（草地/水景/林荫道等）及 Top-3 结果。
+      </div>
+      <div class="field">
+        <label>上传照片</label>
+        <div class="drop-zone" id="dz-scene" onclick="document.getElementById('inp-scene').click()">
+          <div class="icon">🌳</div>
+          <p><strong>点击选择</strong>或拖放图片</p>
+          <input type="file" id="inp-scene" accept="image/*">
+          <img id="prev-scene" class="preview-img" alt="">
+        </div>
+      </div>
+      <div class="metric-row" id="metrics-scene" style="display:none">
+        <div class="metric blue"><div class="val" id="m-scene">—</div><div class="lbl">场景标签</div></div>
+        <div class="metric green"><div class="val" id="m-sconf">—</div><div class="lbl">置信度</div></div>
+        <div class="metric amber"><div class="val" id="m-stime">—</div><div class="lbl">耗时 (s)</div></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-blue" id="btn-scene" onclick="runScene()">
+          <span class="spinner"></span><span class="btn-text">▶ 识别场景</span>
+        </button>
+      </div>
+      <div class="result-box">
+        <div class="result-header"><span>JSON 响应</span><span id="status-scene">—</span></div>
+        <div class="result-body empty" id="out-scene">等待上传图片…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── FR-1.3 声景分析 ──────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-header">
+      <span class="badge badge-amber">FR-1.3</span>
+      <h2>声景分析（YAMNet）</h2>
+    </div>
+    <div class="card-body">
+      <div class="section-note">
+        前端上传：<code>multipart/form-data</code>，字段名 <code>audio</code>（WAV/MP3/OGG，建议10秒）<br>
+        不上传音频将返回<strong>模拟数据</strong>用于接口联调。
+      </div>
+      <div class="field">
+        <label>上传音频（可选，不传返回模拟值）</label>
+        <div class="drop-zone" id="dz-audio" onclick="document.getElementById('inp-audio').click()">
+          <div class="icon">🎙️</div>
+          <p><strong>点击选择</strong>或拖放音频文件</p>
+          <p>WAV / MP3 / OGG · 建议 10 秒</p>
+          <input type="file" id="inp-audio" accept="audio/*">
+          <audio id="prev-audio" class="preview-audio" controls></audio>
+        </div>
+      </div>
+      <div class="sound-bar-wrap" id="sound-bars" style="display:none">
+        <div id="bars-inner"></div>
+        <div class="metric-row" style="margin-top:12px">
+          <div class="metric amber"><div class="val" id="m-natural">—</div><div class="lbl">自然度 (0-100)</div></div>
+          <div class="metric green"><div class="val" id="m-dominant">—</div><div class="lbl">主导声</div></div>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-amber" id="btn-sound" onclick="runSound()">
+          <span class="spinner"></span><span class="btn-text">▶ 分析声景</span>
+        </button>
+        <button class="btn" style="background:rgba(255,255,255,.08);color:var(--text)" onclick="runSoundMock()">模拟数据</button>
+      </div>
+      <div class="result-box">
+        <div class="result-header"><span>JSON 响应</span><span id="status-sound">—</span></div>
+        <div class="result-body empty" id="out-sound">等待分析…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── FR-1.4 GPS 轨迹 ──────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-header">
+      <span class="badge badge-purple">FR-1.4</span>
+      <h2>GPS 轨迹采集与平滑</h2>
+    </div>
+    <div class="card-body">
+      <div class="section-note">
+        前端上传：<code>application/json</code>，包含 <code>points</code> 数组<br>
+        每个点：<code>{ lat, lon, timestamp, heart_rate? }</code>。点击「生成示例」快速填入测试数据。
+      </div>
+      <div class="field">
+        <label>GPS 点序列（JSON）</label>
+        <textarea id="inp-gps" placeholder='{"points":[{"lat":31.2304,"lon":121.4737,"timestamp":1700000000,"heart_rate":72},...]}'></textarea>
+      </div>
+      <div class="metric-row" id="metrics-gps" style="display:none">
+        <div class="metric purple"><div class="val" id="m-gps-pts">—</div><div class="lbl">平滑后点数</div></div>
+        <div class="metric amber"><div class="val" id="m-gps-loss">—</div><div class="lbl">漂移点率 (%)</div></div>
+        <div class="metric green"><div class="val" id="m-gps-dist">—</div><div class="lbl">总距离 (m)</div></div>
+        <div class="metric blue"><div class="val" id="m-gps-hr">—</div><div class="lbl">平均心率</div></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-purple" id="btn-gps" onclick="runGPS()">
+          <span class="spinner"></span><span class="btn-text">▶ 平滑处理</span>
+        </button>
+        <button class="btn" style="background:rgba(255,255,255,.08);color:var(--text)" onclick="fillGPSDemo()">生成示例数据</button>
+      </div>
+      <div class="result-box">
+        <div class="result-header"><span>JSON 响应</span><span id="status-gps">—</span></div>
+        <div class="result-body empty" id="out-gps">等待输入 GPS 数据…</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer>Park20 · 后端测试台 · FR-1.1 ~ FR-1.4 &nbsp;|&nbsp; Flask + Python · 仅供开发调试</footer>
+
+<script>
+const BASE = "";   // 同域，无需跨域前缀
+
+// ── 拖放 & 预览 ───────────────────────────────────────────────────────────
+function setupDrop(dzId, inputId, prevId, type='image') {
+  const dz   = document.getElementById(dzId);
+  const inp  = document.getElementById(inputId);
+  const prev = document.getElementById(prevId);
+  inp.addEventListener('change', () => handleFile(inp.files[0]));
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault(); dz.classList.remove('over');
+    const f = e.dataTransfer.files[0];
+    if (f) { inp.files = e.dataTransfer.files; handleFile(f); }
+  });
+  function handleFile(f) {
+    if (!f) return;
+    const url = URL.createObjectURL(f);
+    if (type === 'image') { prev.src = url; prev.style.display = 'block'; }
+    else { prev.src = url; prev.style.display = 'block'; }
+    dz.querySelector('p').textContent = f.name + ' (' + (f.size/1024).toFixed(1) + ' KB)';
+  }
+}
+setupDrop('dz-gvr',   'inp-gvr',   'prev-gvr',   'image');
+setupDrop('dz-scene', 'inp-scene', 'prev-scene', 'image');
+// audio
+(function(){
+  const dz   = document.getElementById('dz-audio');
+  const inp  = document.getElementById('inp-audio');
+  const prev = document.getElementById('prev-audio');
+  inp.addEventListener('change', () => setAudio(inp.files[0]));
+  dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
+  dz.addEventListener('dragleave', () => dz.classList.remove('over'));
+  dz.addEventListener('drop', e => {
+    e.preventDefault(); dz.classList.remove('over');
+    const f = e.dataTransfer.files[0]; if (f) { inp.files = e.dataTransfer.files; setAudio(f); }
+  });
+  function setAudio(f) {
+    if (!f) return;
+    prev.src = URL.createObjectURL(f); prev.style.display = 'block';
+    dz.querySelector('p').textContent = f.name + ' (' + (f.size/1024).toFixed(1) + ' KB)';
+  }
+})();
+
+// ── 工具函数 ───────────────────────────────────────────────────────────────
+function setLoading(btnId, loading) {
+  const btn = document.getElementById(btnId);
+  btn.disabled = loading;
+  btn.classList.toggle('loading', loading);
+}
+function showResult(outId, statusId, data, ok) {
+  const el = document.getElementById(outId);
+  el.textContent = JSON.stringify(data, null, 2);
+  el.classList.remove('empty');
+  document.getElementById(statusId).textContent = ok ? '✅ 200 OK' : '❌ 错误';
+}
+function colorBar(pct) {
+  if (pct > 0.3) return 'var(--accent)';
+  if (pct > 0.1) return 'var(--accent3)';
+  return 'var(--accent2)';
+}
+
+// ── FR-1.1 绿视率 ─────────────────────────────────────────────────────────
+async function runGVR() {
+  const f = document.getElementById('inp-gvr').files[0];
+  if (!f) { alert('请先选择图片'); return; }
+  setLoading('btn-gvr', true);
+  const fd = new FormData(); fd.append('image', f);
+  try {
+    const r = await fetch(BASE + '/api/fr11/green_view', { method:'POST', body:fd });
+    const d = await r.json();
+    showResult('out-gvr','status-gvr',d,r.ok);
+    if (r.ok) {
+      document.getElementById('metrics-gvr').style.display='flex';
+      document.getElementById('m-gvr').textContent   = d.green_view_rate + '%';
+      document.getElementById('m-gpx').textContent   = d.green_pixels.toLocaleString();
+      document.getElementById('m-gtime').textContent = d.elapsed_sec + 's';
+    }
+  } catch(e) { alert('请求失败: '+e); }
+  setLoading('btn-gvr', false);
+}
+
+// ── FR-1.2 场景识别 ───────────────────────────────────────────────────────
+async function runScene() {
+  const f = document.getElementById('inp-scene').files[0];
+  if (!f) { alert('请先选择图片'); return; }
+  setLoading('btn-scene', true);
+  const fd = new FormData(); fd.append('image', f);
+  try {
+    const r = await fetch(BASE + '/api/fr12/scene_classify', { method:'POST', body:fd });
+    const d = await r.json();
+    showResult('out-scene','status-scene',d,r.ok);
+    if (r.ok) {
+      document.getElementById('metrics-scene').style.display='flex';
+      document.getElementById('m-scene').textContent = d.top_label;
+      document.getElementById('m-sconf').textContent = (d.top_confidence*100).toFixed(1)+'%';
+      document.getElementById('m-stime').textContent = d.elapsed_sec+'s';
+    }
+  } catch(e) { alert('请求失败: '+e); }
+  setLoading('btn-scene', false);
+}
+
+// ── FR-1.3 声景分析 ───────────────────────────────────────────────────────
+async function runSound(mock=false) {
+  setLoading('btn-sound', true);
+  let r, d;
+  try {
+    if (mock) {
+      r = await fetch(BASE + '/api/fr13/soundscape', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{"mock":true}' });
+    } else {
+      const f = document.getElementById('inp-audio').files[0];
+      const fd = new FormData();
+      if (f) fd.append('audio', f);
+      r = await fetch(BASE + '/api/fr13/soundscape', { method:'POST', body: f ? fd : undefined });
+    }
+    d = await r.json();
+    showResult('out-sound','status-sound',d,r.ok);
+    if (r.ok && d.proportions) {
+      renderBars(d.proportions);
+      document.getElementById('sound-bars').style.display='block';
+      document.getElementById('m-natural').textContent = d.naturalness_score;
+      document.getElementById('m-dominant').textContent = d.dominant_sound;
+    }
+  } catch(e) { alert('请求失败: '+e); }
+  setLoading('btn-sound', false);
+}
+function runSoundMock() { runSound(true); }
+function renderBars(props) {
+  const container = document.getElementById('bars-inner');
+  const colors = {'鸟鸣':'#4ade80','水声':'#60a5fa','风声':'#a78bfa','车声':'#f87171','人声':'#fbbf24','音乐':'#fb7185','其他':'#94a3b8'};
+  container.innerHTML = Object.entries(props).map(([k,v]) => `
+    <div class="sound-bar-row">
+      <span class="lbl">${k}</span>
+      <div class="sound-bar-bg"><div class="sound-bar-fill" style="width:${(v*100).toFixed(1)}%;background:${colors[k]||'#64748b'}"></div></div>
+      <span class="pct">${(v*100).toFixed(1)}%</span>
+    </div>`).join('');
+}
+
+// ── FR-1.4 GPS 轨迹 ───────────────────────────────────────────────────────
+async function runGPS() {
+  const raw = document.getElementById('inp-gps').value.trim();
+  if (!raw) { alert('请输入 GPS JSON 数据'); return; }
+  let body;
+  try { body = JSON.parse(raw); } catch(e) { alert('JSON 格式错误: '+e.message); return; }
+  setLoading('btn-gps', true);
+  try {
+    const r = await fetch(BASE + '/api/fr14/gps_smooth', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
+    });
+    const d = await r.json();
+    showResult('out-gps','status-gps',d,r.ok);
+    if (r.ok) {
+      document.getElementById('metrics-gps').style.display='flex';
+      document.getElementById('m-gps-pts').textContent  = d.smoothed_count;
+      document.getElementById('m-gps-loss').textContent = d.loss_rate_pct+'%';
+      document.getElementById('m-gps-dist').textContent = d.total_distance_m;
+      document.getElementById('m-gps-hr').textContent   = d.heart_rate_summary?.avg || '—';
+    }
+  } catch(e) { alert('请求失败: '+e); }
+  setLoading('btn-gps', false);
+}
+
+function fillGPSDemo() {
+  const base_lat = 31.2304, base_lon = 121.4737;
+  const t0 = 1700000000;
+  const pts = [];
+  let lat = base_lat, lon = base_lon;
+  for (let i = 0; i < 30; i++) {
+    lat += (Math.random()-0.5)*0.0001;
+    lon += (Math.random()-0.5)*0.0001;
+    // 偶尔插入漂移点
+    const isDrift = (i === 10 || i === 22);
+    pts.push({
+      lat:  isDrift ? lat + 0.05 : parseFloat(lat.toFixed(7)),
+      lon:  isDrift ? lon + 0.05 : parseFloat(lon.toFixed(7)),
+      timestamp: t0 + i,
+      heart_rate: 65 + Math.floor(Math.random()*25)
+    });
+  }
+  document.getElementById('inp-gps').value = JSON.stringify({points:pts},null,2);
+}
+</script>
+</body>
+</html>
