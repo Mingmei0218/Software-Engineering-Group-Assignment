@@ -1,0 +1,18 @@
+# 依赖（别人 npm install 就有，不入库）
+node_modules/
+
+# expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# 原生目录（prebuild 自动生成，不入库）
+/ios
+/android
+
+# 杂项
+*.log
+.DS_Store
+*.tsbuildinfo
+.env*.local
