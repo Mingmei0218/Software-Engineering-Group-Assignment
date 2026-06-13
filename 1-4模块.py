@@ -395,9 +395,8 @@ def api_scene_classify():
 def api_soundscape():
     """
     FR-1.3 声景分析
-    前端发送：multipart/form-data，字段 audio=<音频文件（WAV/MP3/OGG）>
+    前端发送：multipart/form-data，字段 audio=<音频文件>
              或 JSON { "mock": true } 获取模拟数据
-    返回：JSON { proportions, naturalness_score, dominant_sound, elapsed_sec }
     """
     # 仅 JSON mock 模式
     if request.is_json:
@@ -412,20 +411,42 @@ def api_soundscape():
                         **analyze_soundscape_mock()})
 
     f = request.files["audio"]
-    suffix = os.path.splitext(f.filename)[1] or ".wav"
-    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False, dir=UPLOAD_DIR)
-    f.save(tmp.name)
-    tmp.close()
+    suffix = os.path.splitext(f.filename)[1].lower()
+    tmp_path = None
     try:
-        result = analyze_soundscape_yamnet(tmp.name)
-        return jsonify({"status": "ok", "module": "FR-1.3", **result})
+        # 使用系统临时目录，创建临时文件
+        fd, tmp_path = tempfile.mkstemp(suffix=suffix, prefix="park20_audio_")
+        os.close(fd)   # 关闭文件描述符，稍后用 f.save 写入
+        f.save(tmp_path)
+
+        # 检查音频格式：soundfile 只支持 WAV/FLAC/OGG，不支持 m4a/mp4
+        if suffix in ['.m4a', '.mp4', '.aac', '.3gp']:
+            print(f"[Warning] 收到 {suffix} 格式，YAMNet 暂不支持，返回模拟数据")
+            result = analyze_soundscape_mock()
+            result["note"] = f"{suffix} 格式暂不支持真实分析，请使用 WAV 或 MP3"
+            return jsonify({"status": "ok", "module": "FR-1.3", **result})
+
+        # 尝试用 soundfile 分析
+        try:
+            result = analyze_soundscape_yamnet(tmp_path)
+            return jsonify({"status": "ok", "module": "FR-1.3", **result})
+        except Exception as e:
+            print(f"[YAMNet 分析失败] {e}")
+            mock = analyze_soundscape_mock()
+            mock["yamnet_error"] = str(e)
+            return jsonify({"status": "ok", "module": "FR-1.3", **mock})
+
     except Exception as e:
-        # YAMNet 不可用 → fallback 模拟
+        print(f"[临时文件保存失败] {e}")
         mock = analyze_soundscape_mock()
-        mock["yamnet_error"] = str(e)
+        mock["error"] = str(e)
         return jsonify({"status": "ok", "module": "FR-1.3", **mock})
     finally:
-        os.unlink(tmp.name)
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except Exception as e:
+                print(f"[清理临时文件失败] {e}")
 
 
 @app.route("/api/fr14/gps_smooth", methods=["POST"])
