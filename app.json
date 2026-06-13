@@ -60,6 +60,10 @@
           "cameraPermission": "Park20 需要使用相机拍照测算绿视率。",
           "photosPermission": "Park20 需要访问相册来选取照片测算绿视率。"
         }
+      ],
+      [
+        "expo-av",
+        { "microphonePermission": "Park20 需要使用麦克风来录制环境声，用于声景分析。" }
       ]
     ],
     "experiments": {
