@@ -1,6 +1,14 @@
 """
-Park20 后端服务
+Park20 后端服务（集成版）
 实现 FR-1.1 绿视率计算 / FR-1.2 场景识别 / FR-1.3 声景分析 / FR-1.4 GPS轨迹采集
+   + FR-1.2 升级版（场景识别模块.py）
+   + FR-5.1 报告生成（报告生成模块.py）
+
+【本次集成改动】
+1. 顶部 import 两个新蓝图 scene_bp / report_bp（带 try/except，缺文件也能启动旧服务）。
+2. app/CORS 之后 register_blueprint 注册它们，全部跑在 5050 端口。
+3. 旧的 /api/fr12/scene_classify 路由改名为 /api/fr12/scene_classify_legacy，
+   把规范路径让给升级版（否则旧路由会“先注册先匹配”把升级版盖住）。
 """
 
 import os
@@ -15,6 +23,18 @@ import numpy as np
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from PIL import Image
+
+# ── 集成：导入两个新模块的蓝图 ────────────────────────────────────────────────
+# 说明：场景识别模块.py / 报告生成模块.py 需与本文件放在同一目录。
+#       模块名为中文是合法的（Python3 标识符支持非 ASCII，且不以数字开头）。
+try:
+    from 场景识别模块 import scene_bp
+    from 报告生成模块 import report_bp
+    _BLUEPRINTS_OK = True
+except Exception as _e:
+    scene_bp = report_bp = None
+    _BLUEPRINTS_OK = False
+    print(f"[集成警告] 新模块蓝图导入失败，仅启动 FR-1.1~1.4 旧服务：{_e}")
 
 # ── 可选重依赖，启动时懒加载 ──────────────────────────────────────────────────
 _yamnet_model = None
@@ -31,14 +51,22 @@ def get_yamnet():
 # ─────────────────────────────────────────────────────────────────────────────
 app = Flask(__name__)
 CORS(app)
-app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024   # 50 MB
+app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB
+
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+# ── 集成：注册新蓝图（升级版场景识别 + 报告生成）──────────────────────────────
+if _BLUEPRINTS_OK:
+    app.register_blueprint(scene_bp)    # /api/fr12/scene_classify（升级版）, /api/fr12/aesthetic
+    app.register_blueprint(report_bp)   # /api/report/generate, /api/report/mock, /api/report/<id> ...
+    print("[集成] 已注册 scene_bp + report_bp")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  FR-1.1  绿视率计算（Green View Rate）
+#  FR-1.1 绿视率计算（Green View Rate）
 # ══════════════════════════════════════════════════════════════════════════════
+
 def compute_green_view_rate(pil_image: Image.Image) -> dict:
     """
     模拟苹果 Vision 框架的植被像素识别逻辑：
@@ -47,7 +75,6 @@ def compute_green_view_rate(pil_image: Image.Image) -> dict:
     后端版本用于测试/对比。
     """
     t0 = time.time()
-
     # 转为 RGB numpy 数组
     img = pil_image.convert("RGB")
     # 降采样加速（最长边 → 800px）
@@ -55,7 +82,6 @@ def compute_green_view_rate(pil_image: Image.Image) -> dict:
     if max(img.size) > max_side:
         ratio = max_side / max(img.size)
         img = img.resize((int(img.size[0] * ratio), int(img.size[1] * ratio)), Image.LANCZOS)
-
     arr = np.array(img, dtype=np.float32)
     r, g, b = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
 
@@ -66,8 +92,8 @@ def compute_green_view_rate(pil_image: Image.Image) -> dict:
     s = np.where(maxc != 0, (maxc - minc) / maxc, 0.0)
     diff = maxc - minc + 1e-8
     h = np.where(maxc == g, (b - r) / diff + 2,
-        np.where(maxc == b, (r - g) / diff + 4,
-                 ((g - b) / diff) % 6))
+                 np.where(maxc == b, (r - g) / diff + 4,
+                          ((g - b) / diff) % 6))
     h = (h / 6.0) % 1.0  # 归一化到 [0,1]
 
     # 绿色区间（Hue: 75°~165° → 0.208~0.458, S>0.2, V>0.1）
@@ -78,11 +104,11 @@ def compute_green_view_rate(pil_image: Image.Image) -> dict:
     )
     total_pixels = green_mask.size
     green_pixels = int(green_mask.sum())
-    gvr = round(green_pixels / total_pixels * 100, 1)   # 精度 0.1%
+    gvr = round(green_pixels / total_pixels * 100, 1)  # 精度 0.1%
 
     elapsed = round(time.time() - t0, 3)
     return {
-        "green_view_rate": gvr,          # 百分比，0.0~100.0
+        "green_view_rate": gvr,  # 百分比，0.0~100.0
         "green_pixels": green_pixels,
         "total_pixels": total_pixels,
         "image_size": list(img.size),
@@ -92,18 +118,20 @@ def compute_green_view_rate(pil_image: Image.Image) -> dict:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  FR-1.2  场景识别（Scene Classification）
+#  FR-1.2 场景识别（旧版 / Legacy）
+#  注：升级版已由「场景识别模块.py」的 scene_bp 接管 /api/fr12/scene_classify，
+#      旧实现保留于 /api/fr12/scene_classify_legacy，便于对比与回退。
 # ══════════════════════════════════════════════════════════════════════════════
 
 # 模拟 CoreML 场景分类器（线上替换为真实模型推理）
 SCENE_RULES = [
     # (name_cn, name_en, condition_fn)
-    ("林荫道", "tree-lined path",  lambda h, s, v, gvr: gvr >= 40 and h_dom(h, 0.25, 0.42)),
-    ("草地",   "grassland",        lambda h, s, v, gvr: gvr >= 25 and h_dom(h, 0.22, 0.38) and v.mean() > 0.35),
-    ("水景",   "water feature",    lambda h, s, v, gvr: h_dom(h, 0.52, 0.72) and s.mean() > 0.15),
-    ("花园",   "garden",           lambda h, s, v, gvr: 15 <= gvr < 40 and s.mean() > 0.25),
-    ("城市公园","urban park",      lambda h, s, v, gvr: gvr >= 10),
-    ("硬质广场","plaza",           lambda h, s, v, gvr: True),   # 兜底
+    ("林荫道", "tree-lined path", lambda h, s, v, gvr: gvr >= 40 and h_dom(h, 0.25, 0.42)),
+    ("草地", "grassland", lambda h, s, v, gvr: gvr >= 25 and h_dom(h, 0.22, 0.38) and v.mean() > 0.35),
+    ("水景", "water feature", lambda h, s, v, gvr: h_dom(h, 0.52, 0.72) and s.mean() > 0.15),
+    ("花园", "garden", lambda h, s, v, gvr: 15 <= gvr < 40 and s.mean() > 0.25),
+    ("城市公园", "urban park", lambda h, s, v, gvr: gvr >= 10),
+    ("硬质广场", "plaza", lambda h, s, v, gvr: True),  # 兜底
 ]
 
 def h_dom(h_arr, lo, hi):
@@ -116,15 +144,14 @@ def classify_scene(pil_image: Image.Image, gvr: float) -> dict:
     if max(img.size) > 400:
         ratio = 400 / max(img.size)
         img = img.resize((int(img.size[0] * ratio), int(img.size[1] * ratio)), Image.LANCZOS)
-
     arr = np.array(img, dtype=np.float32)
     r, g, b = arr[:, :, 0], arr[:, :, 1], arr[:, :, 2]
     maxc = np.maximum.reduce([r, g, b])
     minc = np.minimum.reduce([r, g, b])
     diff = maxc - minc + 1e-8
     h = np.where(maxc == g, (b - r) / diff + 2,
-        np.where(maxc == b, (r - g) / diff + 4,
-                 ((g - b) / diff) % 6))
+                 np.where(maxc == b, (r - g) / diff + 4,
+                          ((g - b) / diff) % 6))
     h = (h / 6.0) % 1.0
     s = np.where(maxc != 0, (maxc - minc) / maxc, 0.0)
     v = maxc / 255.0
@@ -138,7 +165,6 @@ def classify_scene(pil_image: Image.Image, gvr: float) -> dict:
             results.append({"label_cn": cn, "label_en": en, "confidence": conf})
             if len(results) == 3:
                 break
-
     if not results:
         results.append({"label_cn": "未知场景", "label_en": "unknown", "confidence": 0.50})
 
@@ -154,7 +180,7 @@ def classify_scene(pil_image: Image.Image, gvr: float) -> dict:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  FR-1.3  声景分析（Soundscape Analysis via YAMNet）
+#  FR-1.3 声景分析（Soundscape Analysis via YAMNet）
 # ══════════════════════════════════════════════════════════════════════════════
 
 # YAMNet 522类→ Park20感兴趣的7类 映射（YAMNet class indices）
@@ -163,17 +189,18 @@ SOUNDSCAPE_MAP = {
     "风声": [289, 290, 291, 292],
     "水声": [293, 294, 295, 296, 297, 298, 299, 300],
     "车声": [300, 301, 302, 303, 304, 305, 306, 307, 308],
-    "人声": [0,   132, 133, 134, 135, 136, 137, 138, 139, 140],
+    "人声": [0, 132, 133, 134, 135, 136, 137, 138, 139, 140],
     "音乐": [137, 138, 139, 140, 141, 142, 143],
     "其他": [],
 }
+
 # 实际 YAMNet 类别索引（subset，保证互斥）
-YAMNET_BIRD   = list(range(0, 20))      # Animal/Bird sounds
-YAMNET_WIND   = [289]
-YAMNET_WATER  = list(range(293, 300))
-YAMNET_VEHICLE= list(range(300, 310))
+YAMNET_BIRD = list(range(0, 20))       # Animal/Bird sounds
+YAMNET_WIND = [289]
+YAMNET_WATER = list(range(293, 300))
+YAMNET_VEHICLE = list(range(300, 310))
 YAMNET_SPEECH = list(range(0, 4)) + list(range(132, 142))
-YAMNET_MUSIC  = list(range(137, 150))
+YAMNET_MUSIC = list(range(137, 150))
 
 PARK20_CLASSES = {
     "鸟鸣": YAMNET_BIRD,
@@ -188,7 +215,6 @@ def analyze_soundscape_yamnet(audio_path: str) -> dict:
     """使用 TensorFlow Hub YAMNet 分析音频文件"""
     import tensorflow as tf
     import soundfile as sf
-
     t0 = time.time()
     model = get_yamnet()
 
@@ -204,10 +230,9 @@ def analyze_soundscape_yamnet(audio_path: str) -> dict:
             np.arange(len(data)), data
         )
     waveform = tf.constant(data.astype(np.float32))
-
     scores, embeddings, spectrogram = model(waveform)
-    scores_np = scores.numpy()              # (frames, 521)
-    mean_scores = scores_np.mean(axis=0)    # (521,)
+    scores_np = scores.numpy()           # (frames, 521)
+    mean_scores = scores_np.mean(axis=0)  # (521,)
 
     # 映射到 Park20 类别
     class_scores = {}
@@ -236,7 +261,6 @@ def analyze_soundscape_yamnet(audio_path: str) -> dict:
         "elapsed_sec": elapsed,
         "within_5s": elapsed < 5.0
     }
-
 
 def analyze_soundscape_mock(duration_sec: float = 10.0) -> dict:
     """
@@ -267,7 +291,7 @@ def analyze_soundscape_mock(duration_sec: float = 10.0) -> dict:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  FR-1.4  GPS 轨迹采集与平滑
+#  FR-1.4 GPS 轨迹采集与平滑
 # ══════════════════════════════════════════════════════════════════════════════
 
 def haversine(lat1, lon1, lat2, lon2) -> float:
@@ -294,7 +318,7 @@ def smooth_gps_track(points: list) -> dict:
     for i in range(1, len(points)):
         prev = cleaned[-1]
         dist = haversine(prev["lat"], prev["lon"], points[i]["lat"], points[i]["lon"])
-        dt   = points[i]["timestamp"] - prev["timestamp"]
+        dt = points[i]["timestamp"] - prev["timestamp"]
         speed = dist / dt if dt > 0 else 0
         if speed <= MAX_SPEED_MS:
             cleaned.append(points[i])
@@ -313,7 +337,7 @@ def smooth_gps_track(points: list) -> dict:
     # ── 3. 统计
     total_dist = sum(
         haversine(smoothed[i-1]["lat"], smoothed[i-1]["lon"],
-                  smoothed[i]["lat"],   smoothed[i]["lon"])
+                  smoothed[i]["lat"], smoothed[i]["lon"])
         for i in range(1, len(smoothed))
     )
     duration = smoothed[-1]["timestamp"] - smoothed[0]["timestamp"] if len(smoothed) > 1 else 0
@@ -347,7 +371,6 @@ def smooth_gps_track(points: list) -> dict:
 def index():
     return render_template("index.html")
 
-
 @app.route("/api/fr11/green_view", methods=["POST"])
 def api_green_view():
     """
@@ -365,14 +388,12 @@ def api_green_view():
     except Exception as e:
         return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
 
-
-@app.route("/api/fr12/scene_classify", methods=["POST"])
-def api_scene_classify():
+@app.route("/api/fr12/scene_classify_legacy", methods=["POST"])
+def api_scene_classify_legacy():
     """
-    FR-1.2 场景识别
+    FR-1.2 场景识别（旧版，保留作对比/回退）
+    规范路径 /api/fr12/scene_classify 已由升级版蓝图 scene_bp 接管。
     前端发送：multipart/form-data，字段 image=<图片文件>
-    返回：JSON { top_label, top_confidence, all_results, elapsed_sec, ... }
-    注：实际 iOS 端由 CoreML 完成；此处为后端等效实现用于测试。
     """
     if "image" not in request.files:
         return jsonify({"error": "缺少 image 字段"}), 400
@@ -383,20 +404,19 @@ def api_scene_classify():
         gvr_result = compute_green_view_rate(img.copy())
         scene_result = classify_scene(img, gvr_result["green_view_rate"])
         return jsonify({
-            "status": "ok", "module": "FR-1.2",
+            "status": "ok", "module": "FR-1.2-legacy",
             "green_view_rate": gvr_result["green_view_rate"],
             **scene_result
         })
     except Exception as e:
         return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
 
-
 @app.route("/api/fr13/soundscape", methods=["POST"])
 def api_soundscape():
     """
     FR-1.3 声景分析
     前端发送：multipart/form-data，字段 audio=<音频文件>
-             或 JSON { "mock": true } 获取模拟数据
+    或 JSON { "mock": true } 获取模拟数据
     """
     # 仅 JSON mock 模式
     if request.is_json:
@@ -416,7 +436,7 @@ def api_soundscape():
     try:
         # 使用系统临时目录，创建临时文件
         fd, tmp_path = tempfile.mkstemp(suffix=suffix, prefix="park20_audio_")
-        os.close(fd)   # 关闭文件描述符，稍后用 f.save 写入
+        os.close(fd)  # 关闭文件描述符，稍后用 f.save 写入
         f.save(tmp_path)
 
         # 检查音频格式：soundfile 只支持 WAV/FLAC/OGG，不支持 m4a/mp4
@@ -435,7 +455,6 @@ def api_soundscape():
             mock = analyze_soundscape_mock()
             mock["yamnet_error"] = str(e)
             return jsonify({"status": "ok", "module": "FR-1.3", **mock})
-
     except Exception as e:
         print(f"[临时文件保存失败] {e}")
         mock = analyze_soundscape_mock()
@@ -447,7 +466,6 @@ def api_soundscape():
                 os.unlink(tmp_path)
             except Exception as e:
                 print(f"[清理临时文件失败] {e}")
-
 
 @app.route("/api/fr14/gps_smooth", methods=["POST"])
 def api_gps_smooth():
@@ -474,7 +492,6 @@ def api_gps_smooth():
         return jsonify({"status": "ok", "module": "FR-1.4", **result})
     except Exception as e:
         return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
-
 
 @app.route("/api/health", methods=["GET"])
 def health():
