@@ -4,6 +4,7 @@ import {
   Animated,
   Easing,
   Image,
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
@@ -88,6 +89,8 @@ export default function CollectScreen() {
   const [soundscapeLoading, setSoundscapeLoading] = useState(false);
   const [audioRecording, setAudioRecording] = useState<Audio.Recording | null>(null);
   const [isListening, setIsListening] = useState(false);
+  const [reportUrl, setReportUrl] = useState<string | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
 
   const pointsRef = useRef<TrackPoint[]>([]);
   const heartRateRef = useRef<number | null>(null);
@@ -213,16 +216,64 @@ export default function CollectScreen() {
   }, [isRecording]);
 
   // 🔗 FR-1.4
-  const sendTrack = async (pts: TrackPoint[]) => {
-    if (pts.length < 2) { Alert.alert('轨迹太短', `只记录到 ${pts.length} 个点`); return; }
+  const sendTrack = async (pts: TrackPoint[]): Promise<SmoothResult | null> => {
+    if (pts.length < 2) { Alert.alert('轨迹太短', `只记录到 ${pts.length} 个点`); return null; }
     try {
       setSending(true);
       const res = await fetch(`${API_BASE}/api/fr14/gps_smooth`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ points: pts }) });
       const d = await res.json();
-      if (!res.ok || d.error) { Alert.alert('分析失败', d.error || ''); return; }
+      if (!res.ok || d.error) { Alert.alert('分析失败', d.error || ''); return null; }
       setResult(d as SmoothResult);
-    } catch { Alert.alert('连不上后端', `确认 ${API_BASE} 启动了`); }
+      return d as SmoothResult;
+    } catch { Alert.alert('连不上后端', `确认 ${API_BASE} 启动了`); return null; }
     finally { setSending(false); }
+  };
+
+  // 🗒️ FR-5.1 报告生成
+  const generateReport = async (pts: TrackPoint[], smoothResult: SmoothResult | null) => {
+    try {
+      setReportLoading(true);
+      setReportUrl(null);
+      const hrs = pts.map((p) => p.heart_rate).filter((x): x is number => typeof x === 'number');
+      const body = {
+        park_name: '公园',
+        duration_sec: seconds,
+        modules_data: {
+          green_view: {
+            green_view_rate: greenView ?? 0,
+            aesthetic_score: greenView != null ? Math.round(greenView * 1.2) : 0,
+          },
+          scene: {
+            top_label: scene?.label ?? '未知场景',
+            scene_description: scene?.label ?? '',
+            healing_comment: '',
+            emotion_tag: '',
+          },
+          soundscape: soundscape
+            ? { proportions: { 自然声: soundscape.score / 100, 其他: 1 - soundscape.score / 100 }, naturalness_score: soundscape.score }
+            : { proportions: { 其他: 1 }, naturalness_score: 0 },
+          gps: {
+            smoothed_points: pts.slice(0, 50).map((p) => ({ lat: p.lat, lon: p.lon })),
+            total_distance_m: smoothResult?.total_distance_m ?? Math.round(totalDistance(pts)),
+          },
+          health: {
+            avg_hr: hrs.length ? Math.round(hrs.reduce((s, x) => s + x, 0) / hrs.length) : 75,
+            hr_start: hrs[0] ?? 80,
+            hr_end: hrs[hrs.length - 1] ?? 72,
+            rmssd: 40,
+          },
+        },
+      };
+      const res = await fetch(`${API_BASE}/api/report/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const d = await res.json();
+      if (!res.ok || d.error) { Alert.alert('报告生成失败', d.error || ''); return; }
+      setReportUrl(`${API_BASE}/api/report/preview/${d.report_id}`);
+    } catch { Alert.alert('报告生成失败', `确认 ${API_BASE} 启动了`); }
+    finally { setReportLoading(false); }
   };
 
   const handleToggle = () => {
@@ -231,7 +282,9 @@ export default function CollectScreen() {
       setHeartRate(null);
       const pts = pointsRef.current;
       addRecord({ created_at: Date.now(), duration_sec: seconds, distance_m: pts.length >= 2 ? Math.round(totalDistance(pts)) : null, avg_hr: avgHeartRate(pts), green_view: greenView }).catch(() => {});
-      sendTrack(pts);
+      sendTrack(pts).then((smoothResult) => {
+        generateReport(pts, smoothResult ?? null);
+      });
     } else {
       setSeconds(0);
       pointsRef.current = [];
@@ -444,6 +497,17 @@ export default function CollectScreen() {
               <Text style={s.dataRow}>心率 {result.heart_rate_summary.avg} avg · {result.heart_rate_summary.min}~{result.heart_rate_summary.max}</Text>
             )}
           </Animated.View>
+        )}
+
+        {/* 🗒️ 报告按钮 */}
+        {reportLoading && <Text style={s.loadingText}>正在生成疗愈报告…</Text>}
+        {reportUrl && !reportLoading && (
+          <TouchableOpacity
+            style={[s.actionBtn, s.primaryBtn, { marginHorizontal: 20, marginTop: 14 }]}
+            activeOpacity={0.85}
+            onPress={() => Linking.openURL(reportUrl)}>
+            <Text style={s.primaryBtnText}>🌿 查看疗愈报告</Text>
+          </TouchableOpacity>
         )}
 
         {/* 大圆按钮 —— 呼吸动画 */}

@@ -13,20 +13,27 @@ import MapView, { Marker, PROVIDER_DEFAULT, Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { useState } from 'react';
 
-// 🔗 公园坐标先用大致真实值占位；将来真实的“坐标 + 疗愈指数”会从后端拉。
+// 🔗 上海公园坐标为大致真实值占位；将来真实的“坐标 + 疗愈指数”会从后端拉。
+// score 颜色分档：≥80 绿(#3FA34D)，50-79 橙(#E6A23C)，<50 红(#E5573F)
 const PARKS = [
-  { id: 1, name: '朝阳公园', score: 86, color: '#3FA34D', lat: 39.9388, lon: 116.4806 },
-  { id: 2, name: '奥林匹克森林公园', score: 78, color: '#E6A23C', lat: 40.0208, lon: 116.392 },
-  { id: 3, name: '团结湖公园', score: 64, color: '#E6A23C', lat: 39.9295, lon: 116.4636 },
-  { id: 4, name: '日坛公园', score: 45, color: '#E5573F', lat: 39.9148, lon: 116.4399 },
+  { id: 1, name: '世纪公园', score: 88, color: '#3FA34D', lat: 31.2206, lon: 121.5512 },
+  { id: 2, name: '共青森林公园', score: 85, color: '#3FA34D', lat: 31.3072, lon: 121.5403 },
+  { id: 3, name: '辰山植物园', score: 84, color: '#3FA34D', lat: 31.0807, lon: 121.1847 },
+  { id: 4, name: '顾村公园', score: 82, color: '#3FA34D', lat: 31.3825, lon: 121.4007 },
+  { id: 5, name: '上海植物园', score: 80, color: '#3FA34D', lat: 31.1492, lon: 121.4505 },
+  { id: 6, name: '中山公园', score: 72, color: '#E6A23C', lat: 31.2236, lon: 121.4204 },
+  { id: 7, name: '复兴公园', score: 68, color: '#E6A23C', lat: 31.2210, lon: 121.4720 },
+  { id: 8, name: '鲁迅公园', score: 66, color: '#E6A23C', lat: 31.2718, lon: 121.4885 },
+  { id: 9, name: '静安公园', score: 47, color: '#E5573F', lat: 31.2256, lon: 121.4448 },
 ];
 
-// 默认先落在北京朝阳公园附近（拿到真实定位后会自动飞过去）
+// 默认先落在上海市中心（人民广场一带），覆盖中心城区主要公园；
+// 拿到真实定位后会自动飞过去。
 const DEFAULT_REGION: Region = {
-  latitude: 39.9388,
-  longitude: 116.4806,
-  latitudeDelta: 0.08,
-  longitudeDelta: 0.08,
+  latitude: 31.2304,
+  longitude: 121.4737,
+  latitudeDelta: 0.16,
+  longitudeDelta: 0.16,
 };
 
 export default function MapScreen() {
